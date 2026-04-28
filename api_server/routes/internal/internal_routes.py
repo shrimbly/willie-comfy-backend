@@ -59,15 +59,26 @@ class InternalRoutes:
 
             directory = get_directory_by_type(directory_type)
 
-            def is_visible_file(entry: os.DirEntry) -> bool:
-                """Filter out hidden files (e.g., .DS_Store on macOS)."""
-                return entry.is_file() and not entry.name.startswith('.')
+            files: list[tuple[str, float]] = []
+            for dirpath, dirnames, filenames in os.walk(directory):
+                # Skip hidden directories
+                dirnames[:] = [d for d in dirnames if not d.startswith('.')]
+                for fname in filenames:
+                    if fname.startswith('.'):
+                        continue
+                    full_path = os.path.join(dirpath, fname)
+                    rel_path = os.path.relpath(full_path, directory)
+                    # Use forward slashes for consistency across platforms
+                    rel_path = rel_path.replace(os.sep, '/')
+                    try:
+                        mtime = os.path.getmtime(full_path)
+                    except OSError:
+                        mtime = 0
+                    files.append((rel_path, mtime))
 
-            sorted_files = sorted(
-                (entry for entry in os.scandir(directory) if is_visible_file(entry)),
-                key=lambda entry: -entry.stat().st_mtime
-            )
-            return web.json_response([entry.name for entry in sorted_files], status=200)
+            # Sort by most recent first
+            files.sort(key=lambda x: -x[1])
+            return web.json_response([[f[0], f[1]] for f in files], status=200)
 
 
     def get_app(self):
